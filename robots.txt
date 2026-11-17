@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /blog/_shell.html
+Sitemap: https://kalptarunaturals.in/sitemap.xml
+Sitemap: https://kalptarunaturals.in/blog-sitemap.xml
