@@ -1,0 +1,40 @@
+name: Import blog from old GoDaddy site (one-time)
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/import-live-blog.yml']
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download blog files from kalptarunaturals.in
+        run: |
+          set -e
+          mkdir -p blog
+          B=https://kalptarunaturals.in
+          for f in blog/index.html blog/posts.json blog/_shell.html blog-sitemap.xml; do
+            curl -fsSL "$B/$f" -o "$f" && echo "got $f" || echo "MISSING $f"
+          done
+          python3 - <<'PY'
+          import json, subprocess
+          for p in json.load(open("blog/posts.json")):
+              f = f"blog/{p['slug']}.html"
+              r = subprocess.run(["curl","-fsSL",f"https://kalptarunaturals.in/{f}","-o",f])
+              print(("got " if r.returncode == 0 else "MISSING ") + f)
+          PY
+          # any images referenced from blog pages that we don't already have
+          grep -ohE '(src|href)="(/|\.\./)?assets/[^"]+"' blog/*.html | sed -E 's/.*"(\/|\.\.\/)?(assets\/[^"]+)"/\2/' | sort -u | while read a; do
+            [ -f "$a" ] || { mkdir -p "$(dirname "$a")"; curl -fsSL "$B/$a" -o "$a" && echo "got $a" || echo "MISSING $a"; }
+          done
+          # also save copies of the dispatch page for reference
+          mkdir -p _godaddy_backup && curl -fsSL "$B/dispatch/" -o _godaddy_backup/dispatch.html || true
+      - name: Commit
+        run: |
+          git config user.name "kalptaru-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A blog blog-sitemap.xml assets _godaddy_backup
+          git commit -m "Import blog from live GoDaddy site" || echo "nothing to commit"
+          git push
