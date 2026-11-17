@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta name="robots" content="noindex,nofollow">
+<style>
+  :root{--g:#1f4d2b;--line:#d9d9d9}
+  *{box-sizing:border-box}
+  body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f6f6f2;color:#222}
+  header{background:var(--g);padding:14px 20px}
+  header img{height:44px}
+  main{max-width:760px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:22px;margin-bottom:18px}
+  h1{color:var(--g);margin:0 0 4px;font-size:24px}
+  h2{font-size:16px;color:var(--g);margin:0 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .full{grid-column:1/-1}
+  label{font-size:13px;color:#444;display:block}
+  input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:6px;font:inherit;margin-top:4px}
+  textarea{min-height:64px}
+  .req::after{content:" *";color:#b00}
+  button{background:var(--g);color:#fff;border:0;border-radius:6px;padding:12px 22px;font-size:15px;cursor:pointer}
+  button:disabled{opacity:.6}
+  .msg{margin-top:12px;font-weight:bold}
+  .ok{color:var(--g)} .err{color:#b00}
+  .small{font-size:12px;color:#666}
+  @media(max-width:600px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><img src="https://raw.githubusercontent.com/kalptarunaturals-cyber/kalptaru-website/main/assets/img/logo-white.png" alt="Kalptaru Naturals"></header>
+<main>
+
+<div class="card" id="gate">
+  <h1>Dispatch Form</h1>
+  <p class="small">Internal tool for the Dispatch and Finance team.</p>
+  <label>Team passcode<input type="password" id="pc" autocomplete="off"></label><br>
+  <button id="open">Open form</button>
+  <div class="msg err" id="gmsg"></div>
+</div>
+
+<form id="f" hidden>
+  <div class="card">
+    <h1>Dispatch Form</h1>
+    <p class="small">Fill this in for every sample or product dispatch. The email goes to the sales manager, the customer and anyone you add, with Finance, ChandraBDM and Dispatch always copied.</p>
+    <div class="grid">
+      <label class="req">Dispatch type<select name="type" required><option>Sample</option><option>Product</option></select></label>
+      <label class="req">Region<select name="region" required><option>North</option><option>South</option><option>West</option></select></label>
+      <label class="req full">Requesting sales manager's email<input type="email" name="smEmail" required></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Customer</h2>
+    <div class="grid">
+      <label class="req">Company<input name="custCompany" required></label>
+      <label class="req">Contact person<input name="custContact" required></label>
+      <label>Phone<input name="custPhone"></label>
+      <label>Email<input type="email" name="custEmail"></label>
+      <label class="full">Delivery address<textarea name="custAddress"></textarea></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Dispatching company</h2>
+    <div class="grid">
+      <label>Company<input name="dispCompany" value="Kalptaru Naturals"></label>
+      <label>Dispatched by (name)<input name="dispName"></label>
+      <label>Phone<input name="dispPhone"></label>
+      <label>Email<input type="email" name="dispEmail" value="dispatch@kalptarunaturals.in"></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Material</h2>
+    <div class="grid">
+      <label class="req full">Product / ingredient<input name="product" required></label>
+      <label class="req">Batch no.<input name="batch" required></label>
+      <label class="req">Quantity<input name="qty" placeholder="e.g. 50 g" required></label>
+      <label>Courier<input name="courier"></label>
+      <label>Docket / AWB no.<input name="docket"></label>
+      <label class="full">COA (PDF or image, max 10 MB)<input type="file" name="coa" accept=".pdf,image/*"></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Other recipients &amp; notes</h2>
+    <label>Other email addresses (BDM etc.), separated by commas<input name="others"></label><br>
+    <label>Notes<textarea name="notes"></textarea></label><br>
+    <button type="submit" id="send">Send dispatch email</button>
+    <div class="msg" id="msg"></div>
+  </div>
+</form>
+</main>
+
+<script>
+let passcode = '';
+const $ = id => document.getElementById(id);
+
+$('open').onclick = () => {
+  const code = $('pc').value;
+  google.script.run.withSuccessHandler(ok => {
+    if (ok) { passcode = code; $('gate').hidden = true; $('f').hidden = false; }
+    else $('gmsg').textContent = 'Wrong passcode.';
+  }).checkPasscode(code);
+};
+$('pc').addEventListener('keydown', e => { if (e.key === 'Enter') $('open').click(); });
+
+$('f').onsubmit = async e => {
+  e.preventDefault();
+  const f = e.target, d = {};
+  new FormData(f).forEach((v, k) => { if (k !== 'coa') d[k] = String(v).trim(); });
+  d.passcode = passcode;
+  const file = f.coa.files[0];
+  if (file) {
+    if (file.size > 10 * 1024 * 1024) { show('COA file is over 10 MB.', true); return; }
+    const b64 = await new Promise(r => { const fr = new FileReader();
+      fr.onload = () => r(fr.result.split(',')[1]); fr.readAsDataURL(file); });
+    d.coa = { name: file.name, mime: file.type || 'application/pdf', data: b64 };
+  }
+  $('send').disabled = true; show('Sending…');
+  google.script.run
+    .withSuccessHandler(m => { show('✓ ' + m); f.reset(); $('send').disabled = false; })
+    .withFailureHandler(err => { show(err.message, true); $('send').disabled = false; })
+    .submitDispatch(d);
+};
+function show(t, bad) { $('msg').textContent = t; $('msg').className = 'msg ' + (bad ? 'err' : 'ok'); }
+</script>
+</body>
+</html>
